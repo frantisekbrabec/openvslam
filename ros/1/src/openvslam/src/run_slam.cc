@@ -33,7 +33,7 @@
 #include <gperftools/profiler.h>
 #endif
 
-void pose_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
+void pose_odometry_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
     Eigen::Matrix3d rotation_matrix = cam_pose_.block(0, 0, 3, 3);
     Eigen::Vector3d translation_vector = cam_pose_.block(0, 3, 3, 1);
 
@@ -87,15 +87,7 @@ void pose_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
 
     // transform broadcast
     static tf2_ros::TransformBroadcaster tf_br;
-
-    // tf2::Matrix3x3 tf_rotation_matrix_br(rotation_matrix(0, 0), rotation_matrix(0, 1), rotation_matrix(0, 2),
-    //                                      rotation_matrix(1, 0), rotation_matrix(1, 1), rotation_matrix(1, 2),
-    //                                      rotation_matrix(2, 0), rotation_matrix(2, 1), rotation_matrix(2, 2));
-
-    // tf2::Vector3 tf_translation_vector_br(translation_vector(0), translation_vector(1), translation_vector(2));
-
-    // tf2::Transform transform_br(tf_rotation_matrix_br, tf_translation_vector_br);
-    
+   
     geometry_msgs::TransformStamped transformStamped;
 
     transformStamped.header.stamp = ros::Time::now();
@@ -152,7 +144,7 @@ void mono_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::str
         const auto track_time = std::chrono::duration_cast<std::chrono::duration<double>>(tp_2 - tp_1).count();
         track_times.push_back(track_time);
 
-        pose_pub(cam_pose, camera_pose_publisher, odometry_pub_publisher);
+        pose_odometry_pub(cam_pose, camera_pose_publisher, odometry_pub_publisher);
     });
 
     // run the viewer in another thread
