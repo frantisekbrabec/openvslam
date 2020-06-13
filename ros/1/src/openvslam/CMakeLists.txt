@@ -129,7 +129,11 @@ endif()
 
 find_package(catkin REQUIRED COMPONENTS
         cv_bridge
-        image_transport)
+        image_transport
+	    geometry_msgs
+	    std_msgs
+        nav_msgs
+	    tf2_geometry_msgs)
 
 # thread library
 find_package(Threads REQUIRED)
@@ -190,7 +194,11 @@ endif()
 
 catkin_package(CATKIN_DEPENDS
         cv_bridge
-        image_transport)
+        image_transport
+	    geometry_msgs
+	    std_msgs
+        nav_msgs
+	    tf2_geometry_msgs)
 
 #################
 # BoW framework #

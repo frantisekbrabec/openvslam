@@ -39,3 +39,12 @@ cmake-build-release/
 *.exe
 *.out
 *.app
+
+ros/1/.catkin_workspace
+ros/1/.vscode/
+ros/1/catkin_make.txt
+ros/1/debug.txt
+ros/1/src/.vscode/
+ros/1/src/CMakeLists.txt
+ros/1/src/cv_bridge/
+
