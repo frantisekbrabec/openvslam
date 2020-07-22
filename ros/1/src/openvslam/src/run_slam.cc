@@ -40,7 +40,7 @@ void pose_odometry_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
     tf2::Matrix3x3 tf_rotation_matrix(rotation_matrix(0, 0), rotation_matrix(0, 1), rotation_matrix(0, 2),
                                       rotation_matrix(1, 0), rotation_matrix(1, 1), rotation_matrix(1, 2),
                                       rotation_matrix(2, 0), rotation_matrix(2, 1), rotation_matrix(2, 2));
-    
+
     tf2::Vector3 tf_translation_vector(translation_vector(0), translation_vector(1), translation_vector(2));
 
     tf_rotation_matrix = tf_rotation_matrix.inverse();
@@ -76,9 +76,9 @@ void pose_odometry_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
     geometry_msgs::PoseStamped camera_pose_msg_;
     camera_pose_msg_.header.stamp = now;
     camera_pose_msg_.header.frame_id = "map";
-    camera_pose_msg_.pose.position.x = transform_tf.getOrigin().getX();
-    camera_pose_msg_.pose.position.y = transform_tf.getOrigin().getY();
-    camera_pose_msg_.pose.position.z = transform_tf.getOrigin().getZ();
+    camera_pose_msg_.pose.position.x = transform_tf.getOrigin().getX()*1;
+    camera_pose_msg_.pose.position.y = transform_tf.getOrigin().getY()*1;
+    camera_pose_msg_.pose.position.z = transform_tf.getOrigin().getZ()*1;
     camera_pose_msg_.pose.orientation.x = transform_tf.getRotation().getX();
     camera_pose_msg_.pose.orientation.y = transform_tf.getRotation().getY();
     camera_pose_msg_.pose.orientation.z = transform_tf.getRotation().getZ();
@@ -87,7 +87,7 @@ void pose_odometry_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
 
     // transform broadcast
     static tf2_ros::TransformBroadcaster tf_br;
-   
+
     geometry_msgs::TransformStamped transformStamped;
 
     transformStamped.header.stamp = ros::Time::now();
@@ -128,11 +128,11 @@ void mono_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::str
     // initialize this node
     ros::NodeHandle nh;
     image_transport::ImageTransport it(nh);
-    ros::Publisher camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/openvslam/camera_pose", 1);
-    ros::Publisher odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/openvslam/odometry", 1);
+    ros::Publisher camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/scout_1/openvslam/camera_pose", 1);
+    ros::Publisher odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/scout_1/openvslam/odometry", 1);
 
     // run the SLAM as subscriber
-    image_transport::Subscriber sub = it.subscribe("camera/image_raw", 1, [&](const sensor_msgs::ImageConstPtr& msg) {
+    image_transport::Subscriber sub = it.subscribe("/scout_1/camera/left/image_raw", 1, [&](const sensor_msgs::ImageConstPtr& msg) {
         const auto tp_1 = std::chrono::steady_clock::now();
         const auto timestamp = std::chrono::duration_cast<std::chrono::duration<double>>(tp_1 - tp_0).count();
 
