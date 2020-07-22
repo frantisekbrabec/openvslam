@@ -104,64 +104,81 @@ void pose_odometry_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
     tf_br.sendTransform(transformStamped);
 }
 
-void mono_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::string& vocab_file_path,
-                   const std::string& mask_img_path, const bool eval_log, const std::string& map_db_path) {
-    // load the mask image
-    const cv::Mat mask = mask_img_path.empty() ? cv::Mat{} : cv::imread(mask_img_path, cv::IMREAD_GRAYSCALE);
+std::vector<double> track_times;
+const auto tp_0 = std::chrono::steady_clock::now();
+
+sensor_msgs::ImageConstPtr last_left_;
+sensor_msgs::ImageConstPtr last_right_;
+const sensor_msgs::ImageConstPtr nullImagePtr;
+
+openvslam::system* outSLAM;
+
+ros::Publisher camera_pose_publisher;
+ros::Publisher odometry_pub_publisher;
+
+void process_input(){
+  if(last_left_ && last_right_){
+    const auto tp_1 = std::chrono::steady_clock::now();
+    const auto timestamp = std::chrono::duration_cast<std::chrono::duration<double>>(tp_1 - tp_0).count();
+
+    // input the current frame and estimate the camera pose
+    auto cam_pose = outSLAM->feed_stereo_frame(cv_bridge::toCvShare(last_left_, "bgr8")->image, cv_bridge::toCvShare(last_right_, "bgr8")->image, timestamp, cv::Mat{});
+
+    last_left_ = last_right_ = nullImagePtr;
+    const auto tp_2 = std::chrono::steady_clock::now();
+
+    const auto track_time = std::chrono::duration_cast<std::chrono::duration<double>>(tp_2 - tp_1).count();
+    track_times.push_back(track_time);
+
+    pose_odometry_pub(cam_pose, camera_pose_publisher, odometry_pub_publisher);
+  }
+}
+
+void left_callback(const sensor_msgs::ImageConstPtr& msg, const sensor_msgs::CameraInfoConstPtr& info){
+  if(last_left_)
+    ROS_WARN_THROTTLE(0.5, "Dropping left image (did not get right before next left)");
+  last_left_ = msg;
+  process_input();
+}
+
+void right_callback(const sensor_msgs::ImageConstPtr& msg, const sensor_msgs::CameraInfoConstPtr& info){
+  if(last_right_)
+    ROS_WARN_THROTTLE(0.5, "Dropping right image (did not get left before next right)");
+  last_right_ = msg;
+  process_input();
+}
+
+void mono_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::string& vocab_file_path, const bool eval_log, const std::string& map_db_path) {
+}
+
+void stereo_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::string& vocab_file_path, const bool eval_log, const std::string& map_db_path) {
 
     // build a SLAM system
     openvslam::system SLAM(cfg, vocab_file_path);
+    outSLAM = &SLAM;
+
     // startup the SLAM process
     SLAM.startup();
 
     // create a viewer object
     // and pass the frame_publisher and the map_publisher
 #ifdef USE_PANGOLIN_VIEWER
-    pangolin_viewer::viewer viewer(cfg, &SLAM, SLAM.get_frame_publisher(), SLAM.get_map_publisher());
-#elif USE_SOCKET_PUBLISHER
-    socket_publisher::publisher publisher(cfg, &SLAM, SLAM.get_frame_publisher(), SLAM.get_map_publisher());
+    pangolin_viewer::viewer viewer(cfg, SLAM, SLAM.get_frame_publisher(), SLAM.get_map_publisher());
 #endif
-
-    std::vector<double> track_times;
-    const auto tp_0 = std::chrono::steady_clock::now();
 
     // initialize this node
     ros::NodeHandle nh;
     image_transport::ImageTransport it(nh);
-    ros::Publisher camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/scout_1/openvslam/camera_pose", 1);
-    ros::Publisher odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/scout_1/openvslam/odometry", 1);
 
-    // run the SLAM as subscriber
-    image_transport::Subscriber sub = it.subscribe("/scout_1/camera/left/image_raw", 1, [&](const sensor_msgs::ImageConstPtr& msg) {
-        const auto tp_1 = std::chrono::steady_clock::now();
-        const auto timestamp = std::chrono::duration_cast<std::chrono::duration<double>>(tp_1 - tp_0).count();
-
-        // input the current frame and estimate the camera pose
-        auto cam_pose = SLAM.feed_monocular_frame(cv_bridge::toCvShare(msg, "bgr8")->image, timestamp, mask);
-
-        const auto tp_2 = std::chrono::steady_clock::now();
-
-        const auto track_time = std::chrono::duration_cast<std::chrono::duration<double>>(tp_2 - tp_1).count();
-        track_times.push_back(track_time);
-
-        pose_odometry_pub(cam_pose, camera_pose_publisher, odometry_pub_publisher);
-    });
+    image_transport::CameraSubscriber left_sub_ = it.subscribeCamera("/scout_1/camera/left/image_raw", 1, left_callback);
+    image_transport::CameraSubscriber right_sub_ = it.subscribeCamera("/scout_1/camera/right/image_raw", 1, right_callback);
+    camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/scout_1/openvslam/camera_pose", 1);
+    odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/scout_1/openvslam/odometry", 1);
 
     // run the viewer in another thread
 #ifdef USE_PANGOLIN_VIEWER
     std::thread thread([&]() {
         viewer.run();
-        if (SLAM.terminate_is_requested()) {
-            // wait until the loop BA is finished
-            while (SLAM.loop_BA_is_running()) {
-                std::this_thread::sleep_for(std::chrono::microseconds(5000));
-            }
-            ros::shutdown();
-        }
-    });
-#elif USE_SOCKET_PUBLISHER
-    std::thread thread([&]() {
-        publisher.run();
         if (SLAM.terminate_is_requested()) {
             // wait until the loop BA is finished
             while (SLAM.loop_BA_is_running()) {
@@ -177,9 +194,6 @@ void mono_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::str
     // automatically close the viewer
 #ifdef USE_PANGOLIN_VIEWER
     viewer.request_terminate();
-    thread.join();
-#elif USE_SOCKET_PUBLISHER
-    publisher.request_terminate();
     thread.join();
 #endif
 
@@ -225,7 +239,6 @@ int main(int argc, char* argv[]) {
     auto help = op.add<popl::Switch>("h", "help", "produce help message");
     auto vocab_file_path = op.add<popl::Value<std::string>>("v", "vocab", "vocabulary file path");
     auto setting_file_path = op.add<popl::Value<std::string>>("c", "config", "setting file path");
-    auto mask_img_path = op.add<popl::Value<std::string>>("", "mask", "mask image path", "");
     auto debug_mode = op.add<popl::Switch>("", "debug", "debug mode");
     auto eval_log = op.add<popl::Switch>("", "eval-log", "store trajectory and tracking times for evaluation");
     auto map_db_path = op.add<popl::Value<std::string>>("", "map-db", "store a map database at this path after SLAM", "");
@@ -276,7 +289,10 @@ int main(int argc, char* argv[]) {
 
     // run tracking
     if (cfg->camera_->setup_type_ == openvslam::camera::setup_type_t::Monocular) {
-        mono_tracking(cfg, vocab_file_path->value(), mask_img_path->value(), eval_log->is_set(), map_db_path->value());
+        mono_tracking(cfg, vocab_file_path->value(), eval_log->is_set(), map_db_path->value());
+    }
+    else if (cfg->camera_->setup_type_ == openvslam::camera::setup_type_t::Stereo) {
+        stereo_tracking(cfg, vocab_file_path->value(), eval_log->is_set(), map_db_path->value());
     }
     else {
         throw std::runtime_error("Invalid setup type: " + cfg->camera_->get_setup_type_string());
