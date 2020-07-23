@@ -256,10 +256,11 @@ RUN /bin/bash -c '. /opt/ros/melodic/setup.bash; cd /openvslam/ros/1/; catkin_ma
     -DBOW_FRAMEWORK=DBoW2'
 
 WORKDIR /openvslam/build/
-#ENTRYPOINT ["/bin/bash"]
 
 COPY orb_vocab/ /openvslam/
-COPY moon/ /openvslam/
 
+WORKDIR /openvslam/
 ENTRYPOINT ["/ros_entrypoint.sh"]
-CMD ["bash"]
+
+# default is to start automatically, you can override by adding 'bash' to the launch command
+CMD ["rosrun", "openvslam", "run_slam", "-v", "orb_vocab.dbow2", "-c", "rover_camera_config.yaml"]
