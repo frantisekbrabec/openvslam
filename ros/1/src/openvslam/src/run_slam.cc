@@ -13,6 +13,7 @@
 #include <string>
 
 #include <ros/ros.h>
+#include <std_msgs/String.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -148,6 +149,11 @@ void right_callback(const sensor_msgs::ImageConstPtr& msg, const sensor_msgs::Ca
   process_input();
 }
 
+
+void vslam_command(const std_msgs::String::ConstPtr& msg) {
+  outSLAM->request_reset();
+}
+
 void mono_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::string& vocab_file_path, const bool eval_log, const std::string& map_db_path) {
 }
 
@@ -174,6 +180,8 @@ void stereo_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::s
     image_transport::CameraSubscriber right_sub_ = it.subscribeCamera("/scout_1/camera/right/image_raw", 1, right_callback);
     camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/scout_1/openvslam/camera_pose", 1);
     odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/scout_1/openvslam/odometry", 1);
+    ros::Subscriber reset_sub = nh.subscribe("/vslam/command", 5, vslam_command);
+
 
     // run the viewer in another thread
 #ifdef USE_PANGOLIN_VIEWER
