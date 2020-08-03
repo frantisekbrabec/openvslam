@@ -6,6 +6,7 @@
 
 #include <openvslam/system.h>
 #include <openvslam/config.h>
+#include "openvslam/imu/data.h"
 
 #include <iostream>
 #include <chrono>
@@ -18,6 +19,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
+#include <sensor_msgs/Imu.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_broadcaster.h>
 
@@ -154,6 +156,21 @@ void vslam_command(const std_msgs::String::ConstPtr& msg) {
   outSLAM->request_reset();
 }
 
+void handle_imu(const sensor_msgs::Imu::ConstPtr &msg) { 
+   double gyro_x = msg->angular_velocity.x;
+   double gyro_y = msg->angular_velocity.y;
+   double gyro_z = msg->angular_velocity.z;
+   double acc_x = msg->linear_acceleration.x;
+   double acc_y = msg->linear_acceleration.y;
+   double acc_z = msg->linear_acceleration.z;
+   ros::Time s = msg->header.stamp;
+   double h_time = double(s.sec) + double(s.nsec)*1e-9;
+
+   const auto imu_data = openvslam::imu::data(acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z, h_time);
+     
+   outSLAM->feed_IMU_data(imu_data);
+}
+
 void mono_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::string& vocab_file_path, const bool eval_log, const std::string& map_db_path) {
 }
 
@@ -181,6 +198,9 @@ void stereo_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::s
     camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/scout_1/openvslam/camera_pose", 1);
     odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/scout_1/openvslam/odometry", 1);
     ros::Subscriber reset_sub = nh.subscribe("/vslam/command", 5, vslam_command);
+
+    //SLAM.config(const std::string& name, const double rate_hz, const Mat44_t& rel_pose_ic, const double ns_acc, const double ns_gyr, const double rw_acc_bias, const double rw_gyr_bias);
+    ros::Subscriber imu_sub = nh.subscribe("/scout_1/imu", 1, handle_imu);
 
 
     // run the viewer in another thread
