@@ -14,6 +14,7 @@
 
 #include <ros/ros.h>
 #include <std_msgs/String.h>
+#include <std_msgs/Bool.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -86,6 +87,7 @@ void pose_odometry_pub(auto cam_pose_, auto pose_pub_, auto odometry_pub_){
     camera_pose_msg_.pose.orientation.w = transform_tf.getRotation().getW();
     pose_pub_.publish(camera_pose_msg_);
 
+
     // transform broadcast
     static tf2_ros::TransformBroadcaster tf_br;
 
@@ -116,6 +118,8 @@ openvslam::system* outSLAM;
 
 ros::Publisher camera_pose_publisher;
 ros::Publisher odometry_pub_publisher;
+ros::Publisher pause_publisher;
+std::string robot_name;
 
 void process_input(){
   if(last_left_ && last_right_){
@@ -132,6 +136,9 @@ void process_input(){
     track_times.push_back(track_time);
 
     pose_odometry_pub(cam_pose, camera_pose_publisher, odometry_pub_publisher);
+
+    // publish whether mapping is enabled or disabled
+    pause_publisher.publish(outSLAM->mapping_module_is_enabled());
   }
 }
 
@@ -166,6 +173,8 @@ void stereo_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::s
     // startup the SLAM process
     SLAM.startup();
 
+    // SLAM.disable_loop_detector(); // will not be going in loops
+
     // create a viewer object
     // and pass the frame_publisher and the map_publisher
 #ifdef USE_PANGOLIN_VIEWER
@@ -176,11 +185,12 @@ void stereo_tracking(const std::shared_ptr<openvslam::config>& cfg, const std::s
     ros::NodeHandle nh;
     image_transport::ImageTransport it(nh);
 
-    image_transport::CameraSubscriber left_sub_ = it.subscribeCamera("/scout_1/camera/left/image_raw", 1, left_callback);
-    image_transport::CameraSubscriber right_sub_ = it.subscribeCamera("/scout_1/camera/right/image_raw", 1, right_callback);
-    camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/scout_1/openvslam/camera_pose", 1);
-    odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/scout_1/openvslam/odometry", 1);
-    ros::Subscriber reset_sub = nh.subscribe("/vslam/command", 5, vslam_command);
+    image_transport::CameraSubscriber left_sub_ = it.subscribeCamera("/" + robot_name + "/camera/left/image_raw", 1, left_callback);
+    image_transport::CameraSubscriber right_sub_ = it.subscribeCamera("/" + robot_name + "/camera/right/image_raw", 1, right_callback);
+    pause_publisher = nh.advertise<std_msgs::Bool>("/" + robot_name + "/openvslam/enabled", 1);
+    camera_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>("/" + robot_name + "/openvslam/camera_pose", 1);
+    odometry_pub_publisher = nh.advertise<nav_msgs::Odometry>("/" + robot_name + "/openvslam/odometry", 1);
+    ros::Subscriber reset_sub = nh.subscribe("/" + robot_name + "/vslam/command", 5, vslam_command);
 
 
     // run the viewer in another thread
@@ -240,13 +250,13 @@ int main(int argc, char* argv[]) {
     google::InitGoogleLogging(argv[0]);
     google::InstallFailureSignalHandler();
 #endif
-    ros::init(argc, argv, "run_slam");
 
     // create options
     popl::OptionParser op("Allowed options");
     auto help = op.add<popl::Switch>("h", "help", "produce help message");
     auto vocab_file_path = op.add<popl::Value<std::string>>("v", "vocab", "vocabulary file path");
     auto setting_file_path = op.add<popl::Value<std::string>>("c", "config", "setting file path");
+    auto rn = op.add<popl::Value<std::string>>("r", "robot", "robot name (e.g., scout_1)");
     auto debug_mode = op.add<popl::Switch>("", "debug", "debug mode");
     auto eval_log = op.add<popl::Switch>("", "eval-log", "store trajectory and tracking times for evaluation");
     auto map_db_path = op.add<popl::Value<std::string>>("", "map-db", "store a map database at this path after SLAM", "");
@@ -280,6 +290,9 @@ int main(int argc, char* argv[]) {
     else {
         spdlog::set_level(spdlog::level::info);
     }
+
+    robot_name = rn->value();
+    ros::init(argc, argv, robot_name);
 
     // load configuration
     std::shared_ptr<openvslam::config> cfg;

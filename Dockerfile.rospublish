@@ -260,7 +260,7 @@ WORKDIR /openvslam/build/
 COPY orb_vocab/ /openvslam/
 
 WORKDIR /openvslam/
-ENTRYPOINT ["/ros_entrypoint.sh"]
+ENTRYPOINT ["/ros_entrypoint.sh", "rosrun", "openvslam", "run_slam", "-v", "orb_vocab.dbow2", "-c", "rover_camera_config.yaml"]
 
 # default is to start automatically, you can override by adding 'bash' to the launch command
-CMD ["rosrun", "openvslam", "run_slam", "-v", "orb_vocab.dbow2", "-c", "rover_camera_config.yaml"]
+CMD ["-r", "scout_1"]
